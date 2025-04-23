@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Talend to DBT Converter</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      max-width: 1200px; 
+      margin: 0 auto; 
+      padding: 20px;
+      line-height: 1.6;
+    }
+    h1, h2 { 
+      color: #333;
+      margin-top: 30px;
+    }
+    #raw-output, #sql-output {
+      background: #f5f5f5; 
+      padding: 15px; 
+      border-radius: 5px;
+      overflow: auto; 
+      white-space: pre-wrap;
+      min-height: 100px; 
+      max-height: 400px;
+      border: 1px solid #ddd;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    .input-container {
+      margin: 20px 0; 
+      padding: 15px; 
+      background: #f9f9f9;
+      border-radius: 5px; 
+      display: flex; 
+      align-items: center; 
+      gap: 10px;
+      border: 1px solid #eaeaea;
+    }
+    button {
+      padding: 10px 20px; 
+      background: #4CAF50; 
+      color: #fff;
+      border: none; 
+      border-radius: 4px; 
+      cursor: pointer;
+      font-weight: bold;
+      transition: background-color 0.2s;
+    }
+    button:disabled { 
+      background: #aaa; 
+      cursor: not-allowed; 
+    }
+    button:hover:not(:disabled) { 
+      background: #45a049;
+    }
+    ul { 
+      list-style: none; 
+      padding-left: 0; 
+    }
+    ul li { 
+      margin: 10px 0; 
+    }
+    ul li a {
+      color: #0066cc; 
+      text-decoration: none; 
+      padding: 5px 10px;
+      border: 1px solid #0066cc; 
+      border-radius: 4px; 
+      display: inline-block;
+      transition: all 0.2s;
+    }
+    ul li a:hover { 
+      background: #e6f0ff;
+      transform: translateY(-1px);
+    }
+    .status-indicator {
+      display: inline-block;
+      margin-left: 10px;
+      font-style: italic;
+      color: #666;
+    }
+    .error {
+      color: #d32f2f;
+      background: #ffebee;
+      padding: 10px;
+      border-radius: 4px;
+      margin: 10px 0;
+      border-left: 4px solid #d32f2f;
+    }
+    .success {
+      color: #388e3c;
+      background: #e8f5e9;
+      padding: 10px;
+      border-radius: 4px;
+      margin: 10px 0;
+      border-left: 4px solid #388e3c;
+    }
+    #processing-indicator {
+      display: none;
+    }
+    @keyframes pulse {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
+    .pulsing {
+      animation: pulse 1.5s infinite;
+    }
+  </style>
+</head>
+<body>
+  <h1>Talend to DBT Converter</h1>
+  <p>Upload a Talend .item file to convert it to a dbt model.</p>
+
+  <div class="input-container">
+    <label for="file-input">Select .item file:</label>
+    <input id="file-input" type="file" accept=".item,.xml"/>
+    <span id="file-name"></span>
+    <button id="convert-btn">Convert</button>
+    <span id="processing-indicator" class="status-indicator pulsing">Processing...</span>
+  </div>
+  
+  <div id="error-container" class="error" style="display: none;"></div>
+  <div id="success-container" class="success" style="display: none;"></div>
+
+  <h2>dbt Conversion Results</h2>
+  <pre id="raw-output">(Upload a file to see conversion results)</pre>
+
+  <h2>Download Links</h2>
+  <ul id="links"></ul>
+
+  <div class="input-container">
+    <button id="get-code-btn" disabled>Get Properly Commented SQL</button>
+    <span id="sql-processing-indicator" class="status-indicator pulsing">Processing...</span>
+  </div>
+
+  <h2>Commented dbt SQL Model</h2>
+  <pre id="sql-output">(Not generated yet)</pre>
+
+  <h2>Download SQL Model</h2>
+  <ul id="sql-links"></ul>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const fileInput = document.getElementById('file-input'),
+            fileName = document.getElementById('file-name'),
+            convertBtn = document.getElementById('convert-btn'),
+            rawOutput = document.getElementById('raw-output'),
+            links = document.getElementById('links'),
+            getCodeBtn = document.getElementById('get-code-btn'),
+            sqlOutput = document.getElementById('sql-output'),
+            sqlLinks = document.getElementById('sql-links'),
+            processingIndicator = document.getElementById('processing-indicator'),
+            sqlProcessingIndicator = document.getElementById('sql-processing-indicator'),
+            errorContainer = document.getElementById('error-container'),
+            successContainer = document.getElementById('success-container');
+
+      // Hide processing indicators initially
+      processingIndicator.style.display = 'none';
+      sqlProcessingIndicator.style.display = 'none';
+
+      let lastData = null;
+
+      fileInput.addEventListener('change', () => {
+        fileName.textContent = fileInput.files[0]?.name || '';
+        errorContainer.style.display = 'none';
+        successContainer.style.display = 'none';
+      });
+
+      convertBtn.addEventListener('click', async () => {
+        if (!fileInput.files.length) {
+          errorContainer.textContent = 'Please select an .item or .xml file.';
+          errorContainer.style.display = 'block';
+          return;
+        }
+        
+        // Reset UI
+        rawOutput.textContent = 'Uploading and converting...';
+        links.innerHTML = '';
+        sqlOutput.textContent = '(Not generated yet)';
+        sqlLinks.innerHTML = '';
+        getCodeBtn.disabled = true;
+        lastData = null;
+        errorContainer.style.display = 'none';
+        successContainer.style.display = 'none';
+        
+        // Show processing indicator
+        processingIndicator.style.display = 'inline-block';
+        convertBtn.disabled = true;
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+
+        try {
+          const resp = await fetch('/convert', { method: 'POST', body: formData });
+          const ct = resp.headers.get('content-type') || '';
+          
+          // Hide processing indicator
+          processingIndicator.style.display = 'none';
+          convertBtn.disabled = false;
+          
+          let data;
+          if (ct.includes('application/json')) {
+            data = await resp.json();
+          } else {
+            const text = await resp.text();
+            errorContainer.textContent = `Server error: ${text}`;
+            errorContainer.style.display = 'block';
+            rawOutput.textContent = '(Error occurred)';
+            return;
+          }
+
+          console.log('Convert response:', data);
+          if (!resp.ok) {
+            errorContainer.textContent = `Error: ${data.error || 'Unknown error'}`;
+            errorContainer.style.display = 'block';
+            rawOutput.textContent = '(Error occurred)';
+            return;
+          }
+
+          lastData = data;
+          rawOutput.textContent = data.raw_output || '(No output)';
+          links.innerHTML = '';
+          
+          Object.entries(data.files || {}).forEach(([label, url]) => {
+            const li = document.createElement('li'),
+                  a = document.createElement('a');
+            a.href = url;
+            a.textContent = `Download ${label.replace(/_/g, ' ')}`;
+            a.target = '_blank';
+            li.appendChild(a);
+            links.appendChild(li);
+          });
+
+          getCodeBtn.disabled = false;
+          successContainer.textContent = 'Talend job successfully converted to dbt model!';
+          successContainer.style.display = 'block';
+        } catch (e) {
+          processingIndicator.style.display = 'none';
+          convertBtn.disabled = false;
+          errorContainer.textContent = 'Error connecting to server: ' + e.message;
+          errorContainer.style.display = 'block';
+          rawOutput.textContent = '(Error occurred)';
+        }
+      });
+
+      getCodeBtn.addEventListener('click', async () => {
+        if (!lastData) return;
+        
+        getCodeBtn.disabled = true;
+        sqlOutput.textContent = 'Generating commented SQL...';
+        sqlLinks.innerHTML = '';
+        errorContainer.style.display = 'none';
+        
+        // Show SQL processing indicator
+        sqlProcessingIndicator.style.display = 'inline-block';
+
+        try {
+          const resp = await fetch('/generate_sql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(lastData)
+          });
+          
+          // Hide SQL processing indicator
+          sqlProcessingIndicator.style.display = 'none';
+          getCodeBtn.disabled = false;
+          
+          const ct = resp.headers.get('content-type') || '';
+          let data;
+          if (ct.includes('application/json')) {
+            data = await resp.json();
+          } else {
+            const text = await resp.text();
+            errorContainer.textContent = `Server error: ${text}`;
+            errorContainer.style.display = 'block';
+            sqlOutput.textContent = '(Error occurred)';
+            return;
+          }
+
+          console.log('Generate SQL response:', data);
+          if (!resp.ok) {
+            errorContainer.textContent = `Error: ${data.error || 'Unknown error'}`;
+            errorContainer.style.display = 'block';
+            sqlOutput.textContent = '(Error occurred)';
+            return;
+          }
+
+          sqlOutput.textContent = data.sql_output || '(No output)';
+          sqlLinks.innerHTML = '';
+          
+          if (data.file_url) {
+            const li = document.createElement('li'),
+                  a = document.createElement('a');
+            a.href = data.file_url;
+            a.textContent = 'Download commented SQL model';
+            a.target = '_blank';
+            li.appendChild(a);
+            sqlLinks.appendChild(li);
+            
+            successContainer.textContent = 'Commented SQL model generated successfully!';
+            successContainer.style.display = 'block';
+          }
+        } catch (e) {
+          sqlProcessingIndicator.style.display = 'none';
+          getCodeBtn.disabled = false;
+          errorContainer.textContent = 'Error connecting to server: ' + e.message;
+          errorContainer.style.display = 'block';
+          sqlOutput.textContent = '(Error occurred)';
+        }
+      });
+    });
+  </script>
+</body>
+</html>
