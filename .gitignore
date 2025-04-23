@@ -2,3 +2,4 @@
 results/
 uploads/
 venv/
+.env/
