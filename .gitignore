@@ -2,4 +2,4 @@
 results/
 uploads/
 venv/
-.env/
+.env
