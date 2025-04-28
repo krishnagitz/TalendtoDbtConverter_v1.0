@@ -26,7 +26,8 @@ import google.generativeai as genai
 # Load environment variables
 load_dotenv()
 API_KEY = os.getenv("GEN_API_KEY")
-
+EYQ_INCUBATOR_KEY=os.getenv("EYQ_INCUBATOR_ENDPOINT")
+EYQ_INCUBATOR_KEY=os.getenv("EYQ_INCUBATOR_KEY")
 # Validate API Key
 if not API_KEY:
     print("Error: GEN_API_KEY not found in environment variables or .env file.", file=sys.stderr)
@@ -41,7 +42,7 @@ except Exception as config_err:
     sys.exit(1)
 
 # Model Selection
-MODEL_NAME = "gemini-1.5-flash-latest"
+MODEL_NAME = "gpt-4-turbo"
 print(f"Using Generative Model: {MODEL_NAME}")
 
 # Directory Setup
@@ -184,7 +185,7 @@ def parse_talend_xml(xml_content):
         summary["error"] = f"Unexpected error during XML parsing: {e}"
     return summary
 
-def call_generative_model(prompt, model_name=MODEL_NAME):
+def call_generative_model1(prompt, model_name=MODEL_NAME):
     """
     Call the generative model with the provided prompt.
     
@@ -322,7 +323,7 @@ jsonfile:
 1. Generate dbt SQL models (.sql files) based on the Talend job logic.
 2. Include a `dbt_project.yml` configuration file.
 3. Provide detailed comments in the SQL files.
-4. Handle tMap components by converting mappings to SQL transformations.
+4. Handle All transformation components like tMap ,tFilterRow ,tAggregateRow ,tDenormalize ,tNormalize ,tJoin ,tUniqRow ,tReplace ,tConvertType ,tSortRow ,tHashInput ,tHashOutput ,tPivotToColumnsDelimited ,tXMLMap ,tJavaRow etc.. by converting mappings to SQL transformations.Additional components like `tAggregateRow`, `tSortRow`, and others must be implemented similarly as SQL transformations.
 5. Return SQL code blocks marked by ```sql\n...\n```.
 """
         # Call LLM
